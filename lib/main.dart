@@ -25,18 +25,37 @@ void main() async {
     await Hive.initFlutter();
   } else {
     // For mobile platforms, use path_provider
-    final appDocumentDirectory =
-        await path_provider.getApplicationDocumentsDirectory();
-    await Hive.initFlutter(appDocumentDirectory.path);
+    try {
+      final appDocumentDirectory =
+          await path_provider.getApplicationDocumentsDirectory();
+      await Hive.initFlutter(appDocumentDirectory.path);
+    } catch (e) {
+      print('Error initializing Hive: $e');
+      // Fallback to initializing without a path
+      await Hive.initFlutter();
+    }
   }
 
   // Register Hive adapters
-  Hive.registerAdapter(SavedPostAdapter());
-  Hive.registerAdapter(FolderAdapter());
+  try {
+    Hive.registerAdapter(SavedPostAdapter());
+    Hive.registerAdapter(FolderAdapter());
+  } catch (e) {
+    print('Error registering adapters: $e');
+  }
 
   // Open Hive boxes
-  await Hive.openBox<SavedPost>('saved_posts');
-  await Hive.openBox<Folder>('folders');
+  try {
+    await Hive.openBox<SavedPost>('saved_posts');
+    await Hive.openBox<Folder>('folders');
+  } catch (e) {
+    print('Error opening Hive boxes: $e');
+    // Try deleting and recreating boxes if they're corrupted
+    await Hive.deleteBoxFromDisk('saved_posts');
+    await Hive.deleteBoxFromDisk('folders');
+    await Hive.openBox<SavedPost>('saved_posts');
+    await Hive.openBox<Folder>('folders');
+  }
 
   runApp(const MyApp());
 }
@@ -54,14 +73,17 @@ class MyApp extends StatelessWidget {
       child: MultiBlocProvider(
         providers: [
           BlocProvider(
-            create: (context) => PostBloc(
-              postRepository: context.read<PostRepository>(),
-            )..add(LoadPosts()),
+            create: (context) {
+              final repository = context.read<PostRepository>();
+              return PostBloc(postRepository: repository)..add(LoadPosts());
+            },
           ),
           BlocProvider(
-            create: (context) => FolderBloc(
-              folderRepository: context.read<FolderRepository>(),
-            )..add(LoadFolders()),
+            create: (context) {
+              final repository = context.read<FolderRepository>();
+              return FolderBloc(folderRepository: repository)
+                ..add(LoadFolders());
+            },
           ),
         ],
         child: MaterialApp(
