@@ -23,6 +23,7 @@ import 'repositories/post_repository.dart';
 import 'repositories/reminder_repository.dart';
 import 'repositories/tag_repository.dart';
 import 'screens/home_screen.dart';
+import 'screens/linkedin_post_screen.dart';
 
 // Global navigator key for accessing context from anywhere
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
@@ -129,6 +130,37 @@ class MyApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
           home: const HomeScreen(),
+          onGenerateRoute: (settings) {
+            if (settings.name == LinkedInPostScreen.routeName) {
+              final args = settings.arguments;
+              String? embedUrl;
+              String? title;
+              if (args is String) {
+                embedUrl = args;
+              } else if (args is Map) {
+                embedUrl = args['embedUrl'] as String?;
+                title = args['title'] as String?;
+              }
+
+              if (embedUrl != null && embedUrl.isNotEmpty) {
+                return MaterialPageRoute(
+                  builder: (_) => LinkedInPostScreen(
+                    embedUrl: embedUrl!,
+                    title: title,
+                  ),
+                  settings: settings,
+                );
+              }
+
+              return MaterialPageRoute(
+                builder: (_) => const Scaffold(
+                  body: Center(child: Text('Missing LinkedIn embedUrl')),
+                ),
+                settings: settings,
+              );
+            }
+            return null;
+          },
         ),
       ),
     );

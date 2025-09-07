@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../constants/app_theme.dart';
+
 import '../blocs/post_bloc.dart';
 import '../blocs/tag_bloc.dart';
+import '../constants/app_theme.dart';
 import '../models/saved_post.dart';
 import '../screens/tags_screen.dart';
 
@@ -28,7 +29,8 @@ class TagsSection extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.tag, size: 16, color: AppTheme.mutedForeground),
+                const Icon(Icons.tag,
+                    size: 16, color: AppTheme.mutedForeground),
                 const SizedBox(width: 8),
                 const Text(
                   'Tags',
@@ -56,20 +58,28 @@ class TagsSection extends StatelessWidget {
                                   itemCount: state.tags.length,
                                   itemBuilder: (context, index) {
                                     final tag = state.tags[index];
-                                    final isSelected = currentPost.tags.contains(tag.name);
+                                    final isSelected =
+                                        currentPost.tags.contains(tag.name);
 
                                     return ListTile(
                                       title: Text(tag.name),
                                       trailing: isSelected
-                                          ? const Icon(Icons.check, color: Colors.green)
+                                          ? const Icon(Icons.check,
+                                              color: Colors.green)
                                           : null,
                                       onTap: isSelected
                                           ? null
                                           : () {
-                                              final updatedPost = currentPost.copyWith(
-                                                tags: [...currentPost.tags, tag.name],
+                                              final updatedPost =
+                                                  currentPost.copyWith(
+                                                tags: [
+                                                  ...currentPost.tags,
+                                                  tag.name
+                                                ],
                                               );
-                                              context.read<PostBloc>().add(UpdatePost(updatedPost));
+                                              context
+                                                  .read<PostBloc>()
+                                                  .add(UpdatePost(updatedPost));
                                               Navigator.pop(context);
                                             },
                                     );
@@ -86,7 +96,9 @@ class TagsSection extends StatelessWidget {
                                     Navigator.pop(context);
                                     Navigator.push(
                                       context,
-                                      MaterialPageRoute(builder: (context) => const TagsScreen()),
+                                      MaterialPageRoute(
+                                          builder: (context) =>
+                                              const TagsScreen()),
                                     );
                                   },
                                   child: const Text('Manage Tags'),
@@ -105,7 +117,6 @@ class TagsSection extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 8),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(AppTheme.spacing3),
@@ -133,8 +144,10 @@ class TagsSection extends StatelessWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   color: AppTheme.mutedColor,
-                                  borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                                  border: Border.all(color: AppTheme.borderColor),
+                                  borderRadius:
+                                      BorderRadius.circular(AppTheme.radiusSm),
+                                  border:
+                                      Border.all(color: AppTheme.borderColor),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
@@ -156,10 +169,15 @@ class TagsSection extends StatelessWidget {
                                       const SizedBox(width: AppTheme.spacing1),
                                       GestureDetector(
                                         onTap: () {
-                                          final updatedPost = currentPost.copyWith(
-                                            tags: currentPost.tags.where((t) => t != tag).toList(),
+                                          final updatedPost =
+                                              currentPost.copyWith(
+                                            tags: currentPost.tags
+                                                .where((t) => t != tag)
+                                                .toList(),
                                           );
-                                          context.read<PostBloc>().add(UpdatePost(updatedPost));
+                                          context
+                                              .read<PostBloc>()
+                                              .add(UpdatePost(updatedPost));
                                         },
                                         child: const Icon(
                                           Icons.close,

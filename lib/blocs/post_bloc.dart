@@ -12,6 +12,17 @@ abstract class PostEvent extends Equatable {
   List<Object?> get props => [];
 }
 
+// New: rename a tag across all posts
+class RenameTagInAllPosts extends PostEvent {
+  final String oldName;
+  final String newName;
+
+  const RenameTagInAllPosts(this.oldName, this.newName);
+
+  @override
+  List<Object?> get props => [oldName, newName];
+}
+
 // New: multi-select for type, priority, platform
 class FilterPostsByTypes extends PostEvent {
   final List<String> types;
@@ -113,6 +124,16 @@ class DeletePost extends PostEvent {
 
   @override
   List<Object?> get props => [id];
+}
+
+// New: remove a tag (by name) from all posts
+class RemoveTagFromAllPosts extends PostEvent {
+  final String tagName;
+
+  const RemoveTagFromAllPosts(this.tagName);
+
+  @override
+  List<Object?> get props => [tagName];
 }
 
 class FilterPostsByType extends PostEvent {
@@ -267,6 +288,8 @@ class PostBloc extends Bloc<PostEvent, PostState> {
     on<AddPost>(_onAddPost);
     on<UpdatePost>(_onUpdatePost);
     on<DeletePost>(_onDeletePost);
+    on<RemoveTagFromAllPosts>(_onRemoveTagFromAllPosts);
+    on<RenameTagInAllPosts>(_onRenameTagInAllPosts);
     on<FilterPostsByType>(_onFilterPostsByType);
     on<FilterPostsByPriority>(_onFilterPostsByPriority);
     on<FilterPostsByPlatform>(_onFilterPostsByPlatform);
@@ -280,6 +303,52 @@ class PostBloc extends Bloc<PostEvent, PostState> {
     on<ApplyMultipleFilters>(_onApplyMultipleFilters);
     on<SortPostsByDate>(_onSortPostsByDate);
     on<ClearFilters>(_onClearFilters);
+  }
+
+  Future<void> _onRenameTagInAllPosts(
+      RenameTagInAllPosts event, Emitter<PostState> emit) async {
+    try {
+      final all = postRepository.getAllPosts();
+      final target = event.oldName.toLowerCase();
+      final replacement = event.newName;
+
+      for (final p in all) {
+        bool changed = false;
+        final newTags = p.tags.map((t) {
+          if (t.toLowerCase() == target) {
+            changed = true;
+            return replacement;
+          }
+          return t;
+        }).toList();
+        if (changed) {
+          final updated = p.copyWith(tags: newTags);
+          await postRepository.updatePost(updated);
+        }
+      }
+      add(LoadPosts());
+    } catch (e) {
+      emit(PostError('Failed to rename tag in posts: ${e.toString()}'));
+    }
+  }
+
+  Future<void> _onRemoveTagFromAllPosts(
+      RemoveTagFromAllPosts event, Emitter<PostState> emit) async {
+    try {
+      final all = postRepository.getAllPosts();
+      final target = event.tagName.toLowerCase();
+
+      for (final p in all) {
+        final newTags = p.tags.where((t) => t.toLowerCase() != target).toList();
+        if (newTags.length != p.tags.length) {
+          final updated = p.copyWith(tags: newTags);
+          await postRepository.updatePost(updated);
+        }
+      }
+      add(LoadPosts());
+    } catch (e) {
+      emit(PostError('Failed to remove tag from posts: ${e.toString()}'));
+    }
   }
 
   void _onFilterPostsByStatus(

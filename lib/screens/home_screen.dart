@@ -7,6 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../blocs/post_bloc.dart';
 import '../constants/app_theme.dart';
 import '../models/saved_post.dart';
+import '../utils/post_filter_utils.dart';
+import '../utils/tag_color_utils.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/filters/active_filter_chip.dart';
 import '../widgets/filters/filter_menu.dart';
@@ -17,8 +19,6 @@ import '../widgets/filters/status_menu.dart';
 import '../widgets/filters/tags_menu.dart';
 import '../widgets/filters/type_menu.dart';
 import '../widgets/post_card.dart';
-import '../utils/post_filter_utils.dart';
-import '../utils/tag_color_utils.dart';
 import 'add_post_screen.dart';
 import 'folders_screen.dart';
 import 'post_details_screen.dart';
@@ -401,8 +401,10 @@ class HomeScreen extends HookWidget {
                       if (selectedFilter.value != 'all')
                         ActiveFilterChip(
                           icon: Iconsax.filter,
-                          color: PostFilterUtils.getFilterColor(selectedFilter.value),
-                          label: PostFilterUtils.getFilterName(selectedFilter.value),
+                          color: PostFilterUtils.getFilterColor(
+                              selectedFilter.value),
+                          label: PostFilterUtils.getFilterName(
+                              selectedFilter.value),
                           onClear: () {
                             selectedFilter.value = 'all';
                             PostFilterUtils.handleFilter(
@@ -501,10 +503,10 @@ class HomeScreen extends HookWidget {
             },
           ),
         ),
+        const SizedBox(height: AppTheme.spacing4),
       ],
     );
   }
-
 
   void _navigateToPostDetails(BuildContext context, SavedPost post) {
     Navigator.push(
@@ -512,5 +514,4 @@ class HomeScreen extends HookWidget {
       MaterialPageRoute(builder: (context) => PostDetailsScreen(post: post)),
     );
   }
-
 }

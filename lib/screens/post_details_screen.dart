@@ -1,7 +1,7 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../blocs/folder_bloc.dart';
@@ -12,17 +12,13 @@ import '../models/folder.dart';
 import '../models/reminder.dart';
 import '../models/saved_post.dart';
 import '../repositories/folder_repository.dart';
-import '../widgets/animated_form_field.dart';
-import '../widgets/dropdown_field.dart';
+import '../utils/embed_store.dart';
+import '../utils/linkedin_utils.dart';
+import '../widgets/generic_embed.dart';
 import '../widgets/highlights_section.dart';
-import '../widgets/open_button.dart';
-import '../widgets/priority_chip.dart';
-import '../widgets/reminder_dialog.dart';
-import '../widgets/reminders_section.dart';
-import '../widgets/section_card.dart';
 import '../widgets/tags_section.dart';
-import '../widgets/type_chip.dart';
-import 'webview_screen.dart';
+import '../widgets/reminder_dialog.dart';
+import 'post_edit_screen.dart';
 
 class PostDetailsScreen extends HookWidget {
   final SavedPost post;
@@ -41,48 +37,29 @@ class PostDetailsScreen extends HookWidget {
       return null;
     }, []);
 
-    // Form controllers initialized with existing values
-    final titleController = useTextEditingController(text: post.title);
-    final linkController = useTextEditingController(text: post.link);
+    // Note: PostDetails is read-only viewer now; editing happens in PostEditScreen
 
-    // State for dropdowns
-    final selectedType = useState(post.type);
-    final selectedPriority = useState(post.priority);
-    final selectedPlatform = useState(post.platform);
-
-    // Form key for validation
-    final formKey = GlobalKey<FormState>();
-
-    // State for edit mode
-    final isEditing = useState(false);
-
-    // Animation controllers
-    final animationController = useAnimationController(
-      duration: const Duration(milliseconds: 300),
-    );
-
-    // Animations for edit mode transition
-    useAnimation(
-      Tween<double>(begin: 0.0, end: 1.0).animate(
-        CurvedAnimation(parent: animationController, curve: Curves.easeInOut),
-      ),
-    );
-
-    // Run animation when edit mode changes
+    // Load saved Embed URL (if any); otherwise derive from post.link
+    final embedUrlState = useState<String?>(null);
     useEffect(() {
-      if (isEditing.value) {
-        animationController.forward();
-      } else {
-        animationController.reverse();
-      }
+      Future.microtask(() async {
+        final saved = await EmbedStore.getEmbedUrl(post.id);
+        if (saved != null && saved.isNotEmpty) {
+          embedUrlState.value = saved;
+        } else {
+          // Derive an embed URL from the post link for inline rendering
+          final derived = LinkedInUtils.toEmbedUrl(post.link) ??
+              _ensureUrlScheme(post.link);
+          embedUrlState.value = derived;
+        }
+      });
       return null;
-    }, [isEditing.value]);
+    }, const []);
 
-    // Get current folder if post is in a folder
-    final folderRepository = context.read<FolderRepository>();
-    final currentFolder = post.folderId != null
-        ? folderRepository.getFolderById(post.folderId!)
-        : null;
+    // Note: repositories are accessed within the specific action handlers as needed
+
+    // Read-only flag for details screen (no editing inside details)
+    final isEditing = useState(false);
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
@@ -111,50 +88,16 @@ class PostDetailsScreen extends HookWidget {
                 case 'reminder':
                   _showReminderDialog(context);
                   break;
+                case 'edit_embed':
+                  _showEditEmbedDialog(context, embedUrlState);
+                  break;
                 case 'edit':
-                  if (isEditing.value) {
-                    // Save changes
-                    if (formKey.currentState!.validate()) {
-                      // Use the latest post from Bloc state to avoid overwriting tags/highlights
-                      final postState = context.read<PostBloc>().state;
-                      final latestPost = postState is PostLoaded
-                          ? (postState.posts.firstWhere(
-                              (p) => p.id == post.id,
-                              orElse: () => post,
-                            ))
-                          : post;
-
-                      _updatePost(
-                        context,
-                        latestPost.copyWith(
-                          title: titleController.text.trim(),
-                          link: linkController.text.trim(),
-                          type: selectedType.value,
-                          priority: selectedPriority.value,
-                          platform: selectedPlatform.value,
-                        ),
-                      );
-                      isEditing.value = false;
-                    }
-                  } else {
-                    // Enter edit mode
-                    // Sync controllers and selections with the latest post state
-                    final postState = context.read<PostBloc>().state;
-                    final latestPost = postState is PostLoaded
-                        ? (postState.posts.firstWhere(
-                            (p) => p.id == post.id,
-                            orElse: () => post,
-                          ))
-                        : post;
-
-                    titleController.text = latestPost.title;
-                    linkController.text = latestPost.link;
-                    selectedType.value = latestPost.type;
-                    selectedPriority.value = latestPost.priority;
-                    selectedPlatform.value = latestPost.platform;
-
-                    isEditing.value = true;
-                  }
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PostEditScreen(post: post),
+                    ),
+                  );
                   break;
                 case 'delete':
                   _showDeleteConfirmation(context);
@@ -202,34 +145,41 @@ class PostDetailsScreen extends HookWidget {
                   ],
                 ),
               ),
-              PopupMenuItem<String>(
+              // const PopupMenuItem<String>(
+              //   value: 'edit_embed',
+              //   child: Row(
+              //     children: [
+              //       Icon(
+              //         Icons.link,
+              //         color: AppTheme.foregroundColor,
+              //         size: 20,
+              //       ),
+              //       SizedBox(width: 12),
+              //       Text(
+              //         'Edit embed URL',
+              //         style: TextStyle(
+              //           color: AppTheme.foregroundColor,
+              //           fontSize: 14,
+              //         ),
+              //       ),
+              //     ],
+              //   ),
+              // ),
+              const PopupMenuItem<String>(
                 value: 'edit',
                 child: Row(
                   children: [
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: Icon(
-                        isEditing.value
-                            ? Icons.check_rounded
-                            : Icons.edit_rounded,
-                        key: ValueKey<bool>(isEditing.value),
-                        color: isEditing.value
-                            ? AppTheme.primaryColor
-                            : AppTheme.foregroundColor,
-                        size: 20,
-                      ),
+                    Icon(
+                      Icons.edit_rounded,
+                      color: AppTheme.foregroundColor,
+                      size: 20,
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: 12),
                     Text(
-                      isEditing.value ? 'Save changes' : 'Edit post',
+                      'Edit post',
                       style: TextStyle(
-                        color: isEditing.value
-                            ? AppTheme.primaryColor
-                            : AppTheme.foregroundColor,
+                        color: AppTheme.foregroundColor,
                         fontSize: 14,
-                        fontWeight: isEditing.value
-                            ? FontWeight.w600
-                            : FontWeight.normal,
                       ),
                     ),
                   ],
@@ -259,283 +209,88 @@ class PostDetailsScreen extends HookWidget {
           ),
         ],
       ),
-      body: Form(
-        key: formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(AppTheme.spacing4),
-          children: [
-            // Type and Priority chips
-            SectionCard(
-              title: 'Classification',
-              icon: Icons.label_outline,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  TypeChip(type: selectedType.value),
-                  const SizedBox(width: AppTheme.spacing3),
-                  PriorityChip(priority: selectedPriority.value),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: AppTheme.spacing4),
-
-            // Current folder indicator (if in a folder)
-            if (currentFolder != null)
-              SectionCard(
-                title: 'Folder',
-                icon: Icons.folder_outlined,
-                child: Container(
-                  padding: const EdgeInsets.all(AppTheme.spacing3),
-                  decoration: BoxDecoration(
-                    color: Color(int.parse(currentFolder.color.substring(1),
-                                radix: 16) +
-                            0xFF000000)
-                        .withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                    border: Border.all(
-                      color: Color(int.parse(currentFolder.color.substring(1),
-                                  radix: 16) +
-                              0xFF000000)
-                          .withValues(alpha: 0.3),
-                    ),
+      body: ListView(
+        padding: const EdgeInsets.all(AppTheme.spacing4),
+        children: [
+          // Embed preview only
+          if (embedUrlState.value != null && embedUrlState.value!.isNotEmpty)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: GenericEmbed(
+                    embedUrl: embedUrlState.value!,
+                    height: 900,
                   ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.folder,
-                        size: 16,
-                        color: Color(int.parse(currentFolder.color.substring(1),
-                                radix: 16) +
-                            0xFF000000),
-                      ),
-                      const SizedBox(width: AppTheme.spacing2),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    if (kIsWeb &&
+                        !embedUrlState.value!.contains('linkedin.com'))
+                      const Icon(Icons.info_outline,
+                          size: 16, color: AppTheme.mutedForeground),
+                    if (kIsWeb &&
+                        !embedUrlState.value!.contains('linkedin.com'))
+                      const SizedBox(width: 6),
+                    if (kIsWeb &&
+                        !embedUrlState.value!.contains('linkedin.com'))
                       Expanded(
                         child: Text(
-                          currentFolder.name,
-                          style: TextStyle(
-                            color: Color(int.parse(
-                                    currentFolder.color.substring(1),
-                                    radix: 16) +
-                                0xFF000000),
-                            fontWeight: FontWeight.w500,
-                            fontSize: 14,
-                          ),
+                          'Some providers may block embedding via CSP. If the preview does not load, open in browser.',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall
+                              ?.copyWith(color: AppTheme.mutedForeground),
                         ),
                       ),
-                      InkWell(
-                        onTap: () => _removeFromFolder(context, post),
-                        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
-                        child: Padding(
-                          padding: const EdgeInsets.all(AppTheme.spacing1),
-                          child: Icon(
-                            Icons.close,
-                            size: 16,
-                            color: Color(int.parse(
-                                    currentFolder.color.substring(1),
-                                    radix: 16) +
-                                0xFF000000),
-                          ),
-                        ),
+                    TextButton.icon(
+                      onPressed: () => _openInBrowser(
+                        embedUrlState.value!,
                       ),
-                    ],
-                  ),
-                ),
-              ),
-
-            if (currentFolder != null)
-              const SizedBox(height: AppTheme.spacing4),
-
-            // Created date
-            SectionCard(
-              title: 'Created',
-              icon: Icons.schedule,
-              child: Container(
-                padding: const EdgeInsets.all(AppTheme.spacing3),
-                decoration: BoxDecoration(
-                  color: AppTheme.mutedColor,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.calendar_today,
-                        size: 16, color: AppTheme.mutedForeground),
-                    const SizedBox(width: AppTheme.spacing2),
-                    Text(
-                      DateFormat('MMMM d, yyyy').format(post.createdAt),
-                      style: const TextStyle(
-                        color: AppTheme.mutedForeground,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text('Open in browser'),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
 
+          if (embedUrlState.value != null && embedUrlState.value!.isNotEmpty)
             const SizedBox(height: AppTheme.spacing4),
 
-            // Title field
-            AnimatedFormField(
-              label: 'Title / Note',
-              icon: Icons.title,
-              controller: titleController,
-              readOnly: !isEditing.value,
-              isEditing: isEditing.value,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter a title or note';
-                }
-                return null;
+          // Read-only Tags under the embed
+          TagsSection(isEditing: isEditing, post: post),
+
+          const Divider(),
+          // Read-only Highlights under the embed
+          HighlightsSection(isEditing: isEditing, post: post),
+
+          const SizedBox(height: AppTheme.spacing6),
+
+          // Subtle tertiary Edit button under sections
+          Align(
+            alignment: Alignment.center,
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => PostEditScreen(post: post),
+                  ),
+                );
               },
-            ),
-
-            const SizedBox(height: AppTheme.spacing4),
-
-            // Link field
-            AnimatedFormField(
-              label: 'LinkedIn Post URL',
-              icon: Icons.link,
-              controller: linkController,
-              readOnly: !isEditing.value,
-              isEditing: isEditing.value,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter the LinkedIn post URL';
-                }
-                return null;
-              },
-            ),
-
-            const SizedBox(height: AppTheme.spacing4),
-
-            // Post Type and Priority dropdowns
-            SectionCard(
-              title: 'Settings',
-              icon: Icons.settings_outlined,
-              child: Column(
-                children: [
-                  // Post Type dropdown
-                  DropdownField(
-                    label: 'Post Type',
-                    icon: Icons.category,
-                    value: selectedType.value.toString().split('.').last,
-                    items: PostType.values
-                        .map((e) => e.toString().split('.').last)
-                        .toList(),
-                    onChanged: isEditing.value
-                        ? (value) {
-                            if (value != null) {
-                              selectedType.value = PostType.values.firstWhere(
-                                  (e) => e.toString().split('.').last == value);
-                            }
-                          }
-                        : null,
-                    isEditing: isEditing.value,
-                  ),
-                  const SizedBox(height: AppTheme.spacing4),
-                  // Priority dropdown
-                  DropdownField(
-                    label: 'Priority',
-                    icon: Icons.flag,
-                    value: selectedPriority.value.toString().split('.').last,
-                    items: Priority.values
-                        .map((e) => e.toString().split('.').last)
-                        .toList(),
-                    onChanged: isEditing.value
-                        ? (value) {
-                            if (value != null) {
-                              selectedPriority.value = Priority.values
-                                  .firstWhere((e) =>
-                                      e.toString().split('.').last == value);
-                            }
-                          }
-                        : null,
-                    isEditing: isEditing.value,
-                  ),
-                  const SizedBox(height: AppTheme.spacing4),
-                  // Platform dropdown
-                  DropdownField(
-                    label: 'Platform',
-                    icon: Icons.language,
-                    value: selectedPlatform.value.toString().split('.').last,
-                    items: Platform.values
-                        .map((e) => e.toString().split('.').last)
-                        .toList(),
-                    onChanged: isEditing.value
-                        ? (value) {
-                            if (value != null) {
-                              selectedPlatform.value = Platform.values
-                                  .firstWhere((e) =>
-                                      e.toString().split('.').last == value);
-                            }
-                          }
-                        : null,
-                    isEditing: isEditing.value,
-                  ),
-                ],
+              icon: const Icon(Icons.edit_rounded, color: AppTheme.mutedForeground),
+              label: const Text(
+                'Edit post',
+                style: TextStyle(color: AppTheme.mutedForeground),
               ),
             ),
+          ),
 
-            const SizedBox(height: AppTheme.spacing4),
-
-            // Tags section
-            TagsSection(isEditing: isEditing, post: post),
-
-            const SizedBox(height: AppTheme.spacing4),
-
-            // Highlights section
-            HighlightsSection(isEditing: isEditing, post: post),
-
-            const SizedBox(height: AppTheme.spacing4),
-
-            // Reminders section
-            RemindersSection(post: post),
-
-            const SizedBox(height: AppTheme.spacing4),
-
-            const SizedBox(height: AppTheme.spacing6),
-
-            // Action buttons
-            SectionCard(
-              title: 'Actions',
-              icon: Icons.launch,
-              child: Column(
-                children: [
-                  // Open in App button
-                  OpenButton(
-                    label: 'OPEN IN APP',
-                    icon: Icons.open_in_new,
-                    isPrimary: true,
-                    onPressed: () => _openInApp(context, post.link, post.title),
-                  ),
-                  const SizedBox(height: AppTheme.spacing3),
-                  // Open in Browser button
-                  OpenButton(
-                    label: 'OPEN IN BROWSER',
-                    icon: Icons.language,
-                    isPrimary: false,
-                    onPressed: () => _openInBrowser(post.link),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: AppTheme.spacing6),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _updatePost(BuildContext context, SavedPost updatedPost) {
-    context.read<PostBloc>().add(UpdatePost(updatedPost));
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Post updated successfully!'),
-        backgroundColor: AppTheme.primaryColor,
+          const SizedBox(height: AppTheme.spacing10),
+        ],
       ),
     );
   }
@@ -577,18 +332,6 @@ class PostDetailsScreen extends HookWidget {
     );
   }
 
-  void _openInApp(BuildContext context, String url, String title) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => WebViewScreen(
-          url: url,
-          title: title,
-        ),
-      ),
-    );
-  }
-
   // Helper method to ensure URL has proper scheme
   String _ensureUrlScheme(String url) {
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -606,6 +349,74 @@ class PostDetailsScreen extends HookWidget {
     } else {
       debugPrint('Could not launch $properUrl');
     }
+  }
+
+  void _showEditEmbedDialog(
+    BuildContext context,
+    ValueNotifier<String?> embedUrlState,
+  ) {
+    final controller = TextEditingController(text: embedUrlState.value ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('Edit Embed URL'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'https://www.example.com/embed/...',
+              labelText: 'Embed URL',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await EmbedStore.remove(post.id);
+                embedUrlState.value = null;
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Embed URL removed')),
+                );
+              },
+              child: const Text(
+                'Remove',
+                style: TextStyle(color: AppTheme.errorColor),
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final v = controller.text.trim();
+                if (v.isNotEmpty) {
+                  String toSave = v;
+                  // Auto-convert LinkedIn URLs to embed URLs when possible
+                  final li = LinkedInUtils.toEmbedUrl(v);
+                  if (li != null) {
+                    toSave = li;
+                  }
+                  // Ensure URL scheme
+                  if (!toSave.startsWith('http://') &&
+                      !toSave.startsWith('https://')) {
+                    toSave = 'https://$toSave';
+                  }
+
+                  await EmbedStore.setEmbedUrl(post.id, toSave);
+                  embedUrlState.value = toSave;
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Embed URL saved')),
+                  );
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _showFolderSelector(BuildContext context, SavedPost post) {

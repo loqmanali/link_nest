@@ -8,6 +8,8 @@ import '../blocs/tag_bloc.dart';
 import '../constants/app_theme.dart';
 import '../models/folder.dart';
 import '../models/saved_post.dart';
+import '../utils/embed_store.dart';
+import '../utils/linkedin_utils.dart';
 import '../widgets/shadcn_select.dart';
 import '../widgets/ui/button.dart';
 import '../widgets/ui/card.dart';
@@ -28,6 +30,7 @@ class AddPostScreen extends HookWidget {
     // Form controllers
     final linkController = useTextEditingController(text: initialUrl ?? '');
     final titleController = useTextEditingController();
+    final embedUrlController = useTextEditingController();
 
     // State for dropdowns
     final selectedType = useState(PostType.article);
@@ -122,7 +125,7 @@ class AddPostScreen extends HookWidget {
                 ),
               ),
 
-              const SizedBox(height: AppTheme.spacing6),
+              const SizedBox(height: AppTheme.spacing4),
 
               // Title Field
               SlideTransition(
@@ -143,7 +146,73 @@ class AddPostScreen extends HookWidget {
                 ),
               ),
 
-              const SizedBox(height: AppTheme.spacing8),
+              // const SizedBox(height: AppTheme.spacing4),
+
+              // // Embed section (optional)
+              // ShadcnCard(
+              //   padding: const EdgeInsets.all(AppTheme.spacing5),
+              //   child: Column(
+              //     crossAxisAlignment: CrossAxisAlignment.start,
+              //     children: [
+              //       Text(
+              //         'Embed (optional)',
+              //         style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              //               fontWeight: FontWeight.w600,
+              //               color: AppTheme.foregroundColor,
+              //             ),
+              //       ),
+              //       const SizedBox(height: AppTheme.spacing4),
+              //       ShadcnInput(
+              //         label: 'Embed URL',
+              //         placeholder:
+              //             'Paste iframe src URL (e.g., https://www.linkedin.com/embed/...)',
+              //         controller: embedUrlController,
+              //       ),
+              //       const SizedBox(height: AppTheme.spacing3),
+              //       Wrap(
+              //         spacing: AppTheme.spacing3.toDouble(),
+              //         runSpacing: AppTheme.spacing2.toDouble(),
+              //         crossAxisAlignment: WrapCrossAlignment.center,
+              //         children: [
+              //           ShadcnButton(
+              //             text: 'Generate from LinkedIn URL',
+              //             size: ButtonSize.sm,
+              //             onPressed: () {
+              //               final src = LinkedInUtils.toEmbedUrl(
+              //                   linkController.text.trim());
+              //               if (src != null) {
+              //                 embedUrlController.text = src;
+              //                 ScaffoldMessenger.of(context).showSnackBar(
+              //                   const SnackBar(
+              //                     content: Text('LinkedIn embed URL generated'),
+              //                     duration: Duration(seconds: 2),
+              //                   ),
+              //                 );
+              //               } else {
+              //                 ScaffoldMessenger.of(context).showSnackBar(
+              //                   const SnackBar(
+              //                     content: Text(
+              //                         'Could not detect LinkedIn URN in the URL'),
+              //                     duration: Duration(seconds: 2),
+              //                   ),
+              //                 );
+              //               }
+              //             },
+              //           ),
+              //           Text(
+              //             'Supports LinkedIn UGC/Share links',
+              //             style:
+              //                 Theme.of(context).textTheme.bodySmall?.copyWith(
+              //                       color: AppTheme.mutedForeground,
+              //                     ),
+              //           ),
+              //         ],
+              //       ),
+              //     ],
+              //   ),
+              // ),
+
+              const SizedBox(height: AppTheme.spacing4),
 
               // Selection Cards
               ShadcnCard(
@@ -230,7 +299,7 @@ class AddPostScreen extends HookWidget {
                 ),
               ),
 
-              const SizedBox(height: AppTheme.spacing6),
+              const SizedBox(height: AppTheme.spacing4),
 
               // Tags Selection
               SlideTransition(
@@ -255,7 +324,7 @@ class AddPostScreen extends HookWidget {
                 ),
               ),
 
-              const SizedBox(height: AppTheme.spacing6),
+              const SizedBox(height: AppTheme.spacing4),
 
               // Folder Selection
               SlideTransition(
@@ -315,24 +384,36 @@ class AddPostScreen extends HookWidget {
                               ),
                             );
 
-                        // Add post to folder if selected
-                        if (selectedFolder.value != null) {
-                          Future.delayed(const Duration(milliseconds: 500), () {
-                            final posts = context
-                                .read<PostBloc>()
-                                .postRepository
-                                .getAllPosts();
-                            if (posts.isNotEmpty) {
-                              final latestPost = posts.reduce((a, b) =>
-                                  a.createdAt.isAfter(b.createdAt) ? a : b);
+                        // Add post to folder if selected and persist embed URL
+                        Future.delayed(const Duration(milliseconds: 500),
+                            () async {
+                          final repo = context.read<PostBloc>().postRepository;
+                          final posts = repo.getAllPosts();
+                          if (posts.isNotEmpty) {
+                            final latestPost = posts.reduce((a, b) =>
+                                a.createdAt.isAfter(b.createdAt) ? a : b);
 
+                            // Save embed URL if provided or derivable for LinkedIn
+                            final manual = embedUrlController.text.trim();
+                            String? toSave = manual.isNotEmpty
+                                ? manual
+                                : LinkedInUtils.toEmbedUrl(
+                                    linkController.text.trim(),
+                                  );
+                            if (toSave != null && toSave.isNotEmpty) {
+                              await EmbedStore.setEmbedUrl(
+                                  latestPost.id, toSave);
+                            }
+
+                            // Add post to folder if selected
+                            if (selectedFolder.value != null) {
                               context.read<FolderBloc>().add(
                                     AddPostToFolder(latestPost.id,
                                         selectedFolder.value!.id),
                                   );
                             }
-                          });
-                        }
+                          }
+                        });
 
                         // Navigate back
                         Future.delayed(const Duration(milliseconds: 800), () {
@@ -433,87 +514,131 @@ class AddPostScreen extends HookWidget {
     required Function(List<String>) onTagsChanged,
   }) {
     return ShadcnCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.tag, size: 16, color: AppTheme.mutedForeground),
-              const SizedBox(width: 8),
-              const Text(
-                'Tags',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: AppTheme.foregroundColor,
-                ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => _showTagSelectionDialog(
-                  context,
-                  availableTags,
-                  selectedTags,
-                  onTagsChanged,
-                ),
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add Tags'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (selectedTags.isEmpty)
-            const Text(
-              'No tags selected',
-              style: TextStyle(
-                color: AppTheme.mutedForeground,
-                fontStyle: FontStyle.italic,
-              ),
-            )
-          else
-            Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: selectedTags
-                  .map((tag) => Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppTheme.mutedColor,
-                          borderRadius: BorderRadius.circular(4),
-                          border: Border.all(color: AppTheme.borderColor),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Icon(Icons.tag_outlined,
+                    size: 16, color: AppTheme.mutedForeground),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Tags',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.foregroundColor,
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.tag,
-                                size: 12, color: AppTheme.mutedForeground),
-                            const SizedBox(width: 4),
-                            Text(
-                              tag,
-                              style: const TextStyle(
-                                  fontSize: 12, fontWeight: FontWeight.w500),
-                            ),
-                            const SizedBox(width: 4),
-                            GestureDetector(
-                              onTap: () {
-                                final updatedTags =
-                                    List<String>.from(selectedTags);
-                                updatedTags.remove(tag);
-                                onTagsChanged(updatedTags);
-                              },
-                              child: const Icon(
-                                Icons.close,
-                                size: 12,
-                                color: AppTheme.mutedForeground,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ))
-                  .toList(),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        selectedTags.isEmpty
+                            ? 'Select relevant tags to organize your post'
+                            : 'Selected ${selectedTags.length} tag(s)',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: AppTheme.mutedForeground),
+                      ),
+                    ],
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _showTagSelectionDialog(
+                    context,
+                    availableTags,
+                    selectedTags,
+                    onTagsChanged,
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.primaryColor,
+                  ),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Manage'),
+                ),
+              ],
             ),
-        ],
+            const SizedBox(height: AppTheme.spacing3),
+            if (selectedTags.isEmpty)
+              const Text(
+                'No tags selected',
+                style: TextStyle(
+                  color: AppTheme.mutedForeground,
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+            else
+              Wrap(
+                alignment: WrapAlignment.start,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 10,
+                runSpacing: 8,
+                children: selectedTags
+                    .map(
+                      (tag) => Material(
+                        color: AppTheme.cardColor,
+                        borderRadius: BorderRadius.circular(8),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(8),
+                          onTap: () {},
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppTheme.borderColor),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.tag,
+                                    size: 12, color: AppTheme.mutedForeground),
+                                const SizedBox(width: 8),
+                                Text(
+                                  tag,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(6),
+                                  onTap: () {
+                                    final updatedTags =
+                                        List<String>.from(selectedTags);
+                                    updatedTags.remove(tag);
+                                    onTagsChanged(updatedTags);
+                                  },
+                                  child: const Padding(
+                                    padding: EdgeInsets.all(2.0),
+                                    child: Icon(
+                                      Icons.close,
+                                      size: 14,
+                                      color: AppTheme.mutedForeground,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+          ],
+        ),
       ),
     );
   }
