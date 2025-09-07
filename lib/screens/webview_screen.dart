@@ -21,11 +21,21 @@ class WebViewScreen extends HookWidget {
     required this.title,
   });
 
+  // Helper method to ensure URL has proper scheme
+  String _ensureUrlScheme(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // Default to https for URLs without scheme
+    return 'https://$url';
+  }
+
   // Helper method to open URL in browser
   Future<void> _launchUrl(String urlString) async {
-    final Uri url = Uri.parse(urlString);
+    final String properUrl = _ensureUrlScheme(urlString);
+    final Uri url = Uri.parse(properUrl);
     if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-      throw Exception('Could not launch $urlString');
+      throw Exception('Could not launch $properUrl');
     }
   }
 
@@ -123,7 +133,7 @@ class WebViewScreen extends HookWidget {
                                     ),
                                     const SizedBox(height: 4),
                                     Text(
-                                      Uri.parse(url).host,
+                                      Uri.parse(_ensureUrlScheme(url)).host,
                                       style: TextStyle(
                                         color: Colors.grey[600],
                                         fontSize: 14,
@@ -341,7 +351,7 @@ class WebViewScreen extends HookWidget {
             },
           ),
         )
-        ..loadRequest(Uri.parse(url));
+        ..loadRequest(Uri.parse(_ensureUrlScheme(url)));
 
       // Update the controller notifier
       webViewControllerNotifier.value = newController;
@@ -394,7 +404,7 @@ class WebViewScreen extends HookWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: AppTheme.primaryColor.withValues(alpha: 0.95),
+        backgroundColor: AppTheme.backgroundColor.withValues(alpha: 0.95),
         elevation: 0,
         centerTitle: true,
         actions: AnimationConfiguration.toStaggeredList(
@@ -405,13 +415,13 @@ class WebViewScreen extends HookWidget {
           ),
           children: [
             IconButton(
-              icon: const Icon(Iconsax.refresh, color: Colors.white),
+              icon: const Icon(Iconsax.refresh, color: Colors.black),
               onPressed: () {
                 webViewController.reload();
               },
             ),
             IconButton(
-              icon: const Icon(Iconsax.share, color: Colors.white),
+              icon: const Icon(Iconsax.share, color: Colors.black),
               onPressed: () async {
                 final currentUrl = await webViewController.currentUrl();
                 if (currentUrl != null) {
@@ -492,7 +502,8 @@ class WebViewScreen extends HookWidget {
                             _buildNavButton(
                               icon: Iconsax.home,
                               onPressed: () {
-                                webViewController.loadRequest(Uri.parse(url));
+                                webViewController.loadRequest(
+                                    Uri.parse(_ensureUrlScheme(url)));
                               },
                             ),
                             _buildNavButton(

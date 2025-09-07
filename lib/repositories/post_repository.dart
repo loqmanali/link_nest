@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
@@ -20,13 +21,13 @@ class PostRepository {
         _postsBox = await Hive.openBox<SavedPost>('saved_posts');
       }
     } catch (e) {
-      print('Error initializing posts box: $e');
+      log('Error initializing posts box: $e', name: 'PostRepository');
       // Try to recover
       try {
         await Hive.deleteBoxFromDisk('saved_posts');
         _postsBox = await Hive.openBox<SavedPost>('saved_posts');
       } catch (e) {
-        print('Failed to recover posts box: $e');
+        log('Failed to recover posts box: $e', name: 'PostRepository');
       }
     }
   }
@@ -40,7 +41,7 @@ class PostRepository {
       }
       return _postsBox.values.toList();
     } catch (e) {
-      print('Error getting all posts: $e');
+      log('Error getting all posts: $e', name: 'PostRepository');
       return [];
     }
   }
@@ -52,6 +53,8 @@ class PostRepository {
     required String type,
     required String priority,
     required String platform,
+    List<String> tags = const [],
+    String status = Status.unread,
   }) async {
     try {
       // Safety check - make sure box is open
@@ -68,12 +71,14 @@ class PostRepository {
         priority: priority,
         createdAt: DateTime.now(),
         platform: platform,
+        tagsParam: tags,
+        statusParam: status,
       );
 
       await _postsBox.put(id, post);
       return id;
     } catch (e) {
-      print('Error adding post: $e');
+      log('Error adding post: $e', name: 'PostRepository');
       return '';
     }
   }
@@ -87,7 +92,7 @@ class PostRepository {
       }
       await _postsBox.put(post.id, post);
     } catch (e) {
-      print('Error updating post: $e');
+      log('Error updating post: $e', name: 'PostRepository');
     }
   }
 
@@ -100,7 +105,7 @@ class PostRepository {
       }
       await _postsBox.delete(id);
     } catch (e) {
-      print('Error deleting post: $e');
+      log('Error deleting post: $e', name: 'PostRepository');
     }
   }
 
@@ -113,7 +118,7 @@ class PostRepository {
       }
       return _postsBox.get(id);
     } catch (e) {
-      print('Error getting post by ID: $e');
+      log('Error getting post by ID: $e', name: 'PostRepository');
       return null;
     }
   }
@@ -127,7 +132,7 @@ class PostRepository {
       }
       return _postsBox.values.where((post) => post.type == type).toList();
     } catch (e) {
-      print('Error filtering posts by type: $e');
+      log('Error filtering posts by type: $e', name: 'PostRepository');
       return [];
     }
   }
@@ -143,7 +148,7 @@ class PostRepository {
           .where((post) => post.priority == priority)
           .toList();
     } catch (e) {
-      print('Error filtering posts by priority: $e');
+      log('Error filtering posts by priority: $e', name: 'PostRepository');
       return [];
     }
   }
@@ -159,7 +164,53 @@ class PostRepository {
           .where((post) => post.platform == platform)
           .toList();
     } catch (e) {
-      print('Error filtering posts by platform: $e');
+      log('Error filtering posts by platform: $e', name: 'PostRepository');
+      return [];
+    }
+  }
+
+  // Filter posts by status
+  List<SavedPost> filterPostsByStatus(String status) {
+    try {
+      if (!Hive.isBoxOpen('saved_posts')) {
+        _initBox();
+      }
+      return _postsBox.values.where((post) => post.status == status).toList();
+    } catch (e) {
+      log('Error filtering posts by status: $e', name: 'PostRepository');
+      return [];
+    }
+  }
+
+  // Filter posts containing any of the provided tags (case-insensitive)
+  List<SavedPost> filterPostsByTags(List<String> tags) {
+    try {
+      if (!Hive.isBoxOpen('saved_posts')) {
+        _initBox();
+      }
+      final tagSet = tags.map((t) => t.toLowerCase()).toSet();
+      return _postsBox.values.where((post) {
+        return post.tags.any((t) => tagSet.contains(t.toLowerCase()));
+      }).toList();
+    } catch (e) {
+      log('Error filtering posts by tags: $e', name: 'PostRepository');
+      return [];
+    }
+  }
+
+  // Simple search across title and link (case-insensitive)
+  List<SavedPost> searchPosts(String query) {
+    try {
+      if (!Hive.isBoxOpen('saved_posts')) {
+        _initBox();
+      }
+      final q = query.toLowerCase();
+      return _postsBox.values.where((post) {
+        return post.title.toLowerCase().contains(q) ||
+            post.link.toLowerCase().contains(q);
+      }).toList();
+    } catch (e) {
+      log('Error searching posts: $e', name: 'PostRepository');
       return [];
     }
   }
@@ -175,7 +226,7 @@ class PostRepository {
       posts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return posts;
     } catch (e) {
-      print('Error sorting posts by date: $e');
+      log('Error sorting posts by date: $e', name: 'PostRepository');
       return [];
     }
   }

@@ -172,10 +172,8 @@ class FolderBloc extends Bloc<FolderEvent, FolderState> {
   void _onAddPostToFolder(
       AddPostToFolder event, Emitter<FolderState> emit) async {
     try {
-      if (state is FolderLoaded) {
-        await folderRepository.addPostToFolder(event.postId, event.folderId);
-        add(LoadFolders());
-      }
+      await folderRepository.addPostToFolder(event.postId, event.folderId);
+      add(LoadFolders());
     } catch (e) {
       emit(FolderError('Failed to add post to folder: ${e.toString()}'));
     }
@@ -184,10 +182,8 @@ class FolderBloc extends Bloc<FolderEvent, FolderState> {
   void _onRemovePostFromFolder(
       RemovePostFromFolder event, Emitter<FolderState> emit) async {
     try {
-      if (state is FolderLoaded) {
-        await folderRepository.removePostFromFolder(event.postId);
-        add(LoadFolders());
-      }
+      await folderRepository.removePostFromFolder(event.postId);
+      add(LoadFolders());
     } catch (e) {
       emit(FolderError('Failed to remove post from folder: ${e.toString()}'));
     }

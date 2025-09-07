@@ -25,13 +25,21 @@ class SavedPostAdapter extends TypeAdapter<SavedPost> {
       createdAt: fields[5] as DateTime,
       platform: fields[6] as String,
       folderId: fields[7] as String?,
+      tagsParam: (fields[8] as List?)?.cast<String>(),
+      statusParam: fields[9] as String?,
+      savedAt: fields[10] as DateTime?,
+      lastOpenedAt: fields[11] as DateTime?,
+      summary: fields[12] as String?,
+      keywordsParam: (fields[13] as List?)?.cast<String>(),
+      contentType: fields[14] as String?,
+      highlightsParam: (fields[15] as List?)?.cast<String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, SavedPost obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(16)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +55,23 @@ class SavedPostAdapter extends TypeAdapter<SavedPost> {
       ..writeByte(6)
       ..write(obj.platform)
       ..writeByte(7)
-      ..write(obj.folderId);
+      ..write(obj.folderId)
+      ..writeByte(8)
+      ..write(obj.tags)
+      ..writeByte(9)
+      ..write(obj.status)
+      ..writeByte(10)
+      ..write(obj.savedAt)
+      ..writeByte(11)
+      ..write(obj.lastOpenedAt)
+      ..writeByte(12)
+      ..write(obj.summary)
+      ..writeByte(13)
+      ..write(obj.keywords)
+      ..writeByte(14)
+      ..write(obj.contentType)
+      ..writeByte(15)
+      ..write(obj.highlights);
   }
 
   @override

@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:hive/hive.dart';
 import 'package:uuid/uuid.dart';
 
@@ -30,7 +32,8 @@ class FolderRepository {
         _postsBox = await Hive.openBox<SavedPost>('saved_posts');
       }
     } catch (e) {
-      print('Error initializing folder repositories: $e');
+      log('Error initializing folder repositories: $e',
+          name: 'FolderRepository');
       // Try to recover
       try {
         if (!Hive.isBoxOpen('folders')) {
@@ -42,7 +45,7 @@ class FolderRepository {
           _postsBox = await Hive.openBox<SavedPost>('saved_posts');
         }
       } catch (e) {
-        print('Failed to recover boxes: $e');
+        log('Failed to recover boxes: $e', name: 'FolderRepository');
       }
     }
   }
@@ -56,7 +59,7 @@ class FolderRepository {
       }
       return _foldersBox.values.toList();
     } catch (e) {
-      print('Error getting all folders: $e');
+      log('Error getting all folders: $e', name: 'FolderRepository');
       return [];
     }
   }
@@ -85,7 +88,7 @@ class FolderRepository {
       await _foldersBox.put(id, folder);
       return id;
     } catch (e) {
-      print('Error adding folder: $e');
+      log('Error adding folder: $e', name: 'FolderRepository');
       return '';
     }
   }
@@ -99,7 +102,7 @@ class FolderRepository {
       }
       await _foldersBox.put(folder.id, folder);
     } catch (e) {
-      print('Error updating folder: $e');
+      log('Error updating folder: $e', name: 'FolderRepository');
     }
   }
 
@@ -122,7 +125,7 @@ class FolderRepository {
       // Then delete the folder
       await _foldersBox.delete(id);
     } catch (e) {
-      print('Error deleting folder: $e');
+      log('Error deleting folder: $e', name: 'FolderRepository');
     }
   }
 
@@ -135,7 +138,7 @@ class FolderRepository {
       }
       return _foldersBox.get(id);
     } catch (e) {
-      print('Error getting folder by ID: $e');
+      log('Error getting folder by ID: $e', name: 'FolderRepository');
       return null;
     }
   }
@@ -151,7 +154,7 @@ class FolderRepository {
           .where((post) => post.folderId == folderId)
           .toList();
     } catch (e) {
-      print('Error getting posts in folder: $e');
+      log('Error getting posts in folder: $e', name: 'FolderRepository');
       return [];
     }
   }
@@ -178,7 +181,7 @@ class FolderRepository {
         }
       }
     } catch (e) {
-      print('Error adding post to folder: $e');
+      log('Error adding post to folder: $e', name: 'FolderRepository');
     }
   }
 
@@ -205,7 +208,7 @@ class FolderRepository {
         }
       }
     } catch (e) {
-      print('Error removing post from folder: $e');
+      log('Error removing post from folder: $e', name: 'FolderRepository');
     }
   }
 
@@ -220,7 +223,7 @@ class FolderRepository {
       folders.sort((a, b) => a.name.compareTo(b.name));
       return folders;
     } catch (e) {
-      print('Error sorting folders by name: $e');
+      log('Error sorting folders by name: $e', name: 'FolderRepository');
       return [];
     }
   }
@@ -236,7 +239,7 @@ class FolderRepository {
       folders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return folders;
     } catch (e) {
-      print('Error sorting folders by date: $e');
+      log('Error sorting folders by date: $e', name: 'FolderRepository');
       return [];
     }
   }

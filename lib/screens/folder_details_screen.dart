@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 import '../blocs/folder_bloc.dart';
+import '../blocs/post_bloc.dart';
 import '../models/folder.dart';
 import '../models/saved_post.dart';
 import '../repositories/folder_repository.dart';
@@ -20,10 +22,7 @@ class FolderDetailsScreen extends StatelessWidget {
     final color =
         Color(int.parse(folder.color.substring(1), radix: 16) + 0xFF000000);
 
-    // Get posts in this folder
-    final folderRepository = context.read<FolderRepository>();
-    final postsInFolder = folderRepository.getPostsInFolder(folder.id);
-
+    // Build directly and react to Hive changes for instant updates
     return Scaffold(
       appBar: AppBar(
         title: Text(folder.name),
@@ -35,96 +34,104 @@ class FolderDetailsScreen extends StatelessWidget {
           ),
         ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Folder header
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: color.withOpacity(0.1),
-            child: Row(
-              children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: color, width: 2),
-                  ),
-                  child: Icon(Icons.folder, color: color, size: 36),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        folder.name,
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
+      body: ValueListenableBuilder(
+        valueListenable: Hive.box<SavedPost>('saved_posts').listenable(),
+        builder: (context, Box<SavedPost> box, _) {
+          final postsInFolder =
+              box.values.where((post) => post.folderId == folder.id).toList();
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Folder header
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: color.withValues(alpha: 0.1),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 60,
+                      height: 60,
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: color, width: 2),
                       ),
-                      if (folder.description != null &&
-                          folder.description!.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            folder.description!,
-                            style: TextStyle(
-                              color: Colors.grey[700],
+                      child: Icon(Icons.folder, color: color, size: 36),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            folder.name,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${postsInFolder.length} links',
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 14,
-                        ),
+                          if (folder.description != null &&
+                              folder.description!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                folder.description!,
+                                style: TextStyle(
+                                  color: Colors.grey[700],
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${postsInFolder.length} links',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Posts list
-          Expanded(
-            child: postsInFolder.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.link_off,
-                            size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        const Text(
-                          'No links in this folder',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Add links to "${folder.name}" folder',
-                          style: const TextStyle(color: Colors.grey),
-                        ),
-                      ],
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: postsInFolder.length,
-                    itemBuilder: (context, index) {
-                      final post = postsInFolder[index];
-                      return _buildPostCard(context, post);
-                    },
-                  ),
-          ),
-        ],
+                  ],
+                ),
+              ),
+
+              // Posts list
+              Expanded(
+                child: postsInFolder.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.link_off,
+                                size: 64, color: Colors.grey),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No links in this folder',
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Add links to "${folder.name}" folder',
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: postsInFolder.length,
+                        itemBuilder: (context, index) {
+                          final post = postsInFolder[index];
+                          return _buildPostCard(context, post);
+                        },
+                      ),
+              ),
+            ],
+          );
+        },
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'folder_details_fab',
@@ -263,7 +270,7 @@ class FolderDetailsScreen extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: priorityColor.withOpacity(0.1),
+                      color: priorityColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: priorityColor),
                     ),
@@ -442,9 +449,11 @@ class FolderDetailsScreen extends StatelessWidget {
   }
 
   void _showRemoveConfirmation(BuildContext context, SavedPost post) {
+    // Capture the parent context to access Bloc providers
+    final parentContext = context;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Remove from Folder'),
         content: Text(
           'Are you sure you want to remove "${post.title}" from this folder?',
@@ -456,8 +465,13 @@ class FolderDetailsScreen extends StatelessWidget {
           ),
           TextButton(
             onPressed: () {
-              context.read<FolderBloc>().add(RemovePostFromFolder(post.id));
-              Navigator.pop(context);
+              // Perform removal directly to ensure Hive updates instantly
+              final folderRepo = parentContext.read<FolderRepository>();
+              folderRepo.removePostFromFolder(post.id);
+              // Then refresh both blocs to sync any derived state
+              parentContext.read<FolderBloc>().add(LoadFolders());
+              parentContext.read<PostBloc>().add(LoadPosts());
+              Navigator.pop(dialogContext);
             },
             child: const Text('Remove'),
           ),

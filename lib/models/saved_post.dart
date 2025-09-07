@@ -3,6 +3,9 @@ import 'package:hive/hive.dart';
 
 part 'saved_post.g.dart';
 
+// Sentinel to differentiate between an omitted parameter and an explicit null
+const _unset = Object();
+
 @HiveType(typeId: 0)
 class SavedPost with EquatableMixin {
   @HiveField(0)
@@ -29,6 +32,32 @@ class SavedPost with EquatableMixin {
   @HiveField(7)
   final String? folderId;
 
+  // New fields
+  @HiveField(8)
+  final List<String> tags;
+
+  @HiveField(9)
+  final String status; // unread | read | starred
+
+  // Extended metadata
+  @HiveField(10)
+  final DateTime savedAt; // when saved into app
+
+  @HiveField(11)
+  final DateTime? lastOpenedAt; // last time opened/read
+
+  @HiveField(12)
+  final String? summary; // generated or manual
+
+  @HiveField(13)
+  final List<String> keywords; // generated or manual
+
+  @HiveField(14)
+  final String contentType; // e.g., Article, Video, Thread, etc.
+
+  @HiveField(15)
+  final List<String> highlights; // key bullets
+
   SavedPost({
     required this.id,
     required this.link,
@@ -38,7 +67,21 @@ class SavedPost with EquatableMixin {
     required this.createdAt,
     this.platform = 'Other',
     this.folderId,
-  });
+    List<String>? tagsParam,
+    String? statusParam,
+    DateTime? savedAt,
+    this.lastOpenedAt,
+    this.summary,
+    List<String>? keywordsParam,
+    String? contentType,
+    List<String>? highlightsParam,
+  })
+      : savedAt = savedAt ?? DateTime.now(),
+        contentType = contentType ?? type,
+        tags = tagsParam ?? const [],
+        status = statusParam ?? Status.unread,
+        keywords = keywordsParam ?? const [],
+        highlights = highlightsParam ?? const [];
 
   // Create a copy of the post with updated fields
   SavedPost copyWith({
@@ -49,7 +92,15 @@ class SavedPost with EquatableMixin {
     String? priority,
     DateTime? createdAt,
     String? platform,
-    String? folderId,
+    Object? folderId = _unset,
+    List<String>? tags,
+    String? status,
+    DateTime? savedAt,
+    DateTime? lastOpenedAt,
+    String? summary,
+    List<String>? keywords,
+    String? contentType,
+    List<String>? highlights,
   }) {
     return SavedPost(
       id: id ?? this.id,
@@ -59,7 +110,15 @@ class SavedPost with EquatableMixin {
       priority: priority ?? this.priority,
       createdAt: createdAt ?? this.createdAt,
       platform: platform ?? this.platform,
-      folderId: folderId ?? this.folderId,
+      folderId: identical(folderId, _unset) ? this.folderId : folderId as String?,
+      tagsParam: tags ?? this.tags,
+      statusParam: status ?? this.status,
+      savedAt: savedAt ?? this.savedAt,
+      lastOpenedAt: lastOpenedAt ?? this.lastOpenedAt,
+      summary: summary ?? this.summary,
+      keywordsParam: keywords ?? this.keywords,
+      contentType: contentType ?? this.contentType,
+      highlightsParam: highlights ?? this.highlights,
     );
   }
 
@@ -73,6 +132,14 @@ class SavedPost with EquatableMixin {
         createdAt,
         platform,
         folderId,
+        tags,
+        status,
+        savedAt,
+        lastOpenedAt,
+        summary,
+        keywords,
+        contentType,
+        highlights,
       ];
 }
 
@@ -119,4 +186,13 @@ class Platform {
     telegram,
     other,
   ];
+}
+
+// Define constants for read status
+class Status {
+  static const String unread = 'unread';
+  static const String read = 'read';
+  static const String starred = 'starred';
+
+  static List<String> values = [unread, read, starred];
 }

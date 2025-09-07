@@ -6,10 +6,22 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../blocs/folder_bloc.dart';
 import '../blocs/post_bloc.dart';
+import '../blocs/reminder_bloc.dart';
 import '../constants/app_theme.dart';
 import '../models/folder.dart';
+import '../models/reminder.dart';
 import '../models/saved_post.dart';
 import '../repositories/folder_repository.dart';
+import '../widgets/animated_form_field.dart';
+import '../widgets/dropdown_field.dart';
+import '../widgets/highlights_section.dart';
+import '../widgets/open_button.dart';
+import '../widgets/priority_chip.dart';
+import '../widgets/reminder_dialog.dart';
+import '../widgets/reminders_section.dart';
+import '../widgets/section_card.dart';
+import '../widgets/tags_section.dart';
+import '../widgets/type_chip.dart';
 import 'webview_screen.dart';
 
 class PostDetailsScreen extends HookWidget {
@@ -22,6 +34,13 @@ class PostDetailsScreen extends HookWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Update lastOpenedAt when screen is first built
+    useEffect(() {
+      final updatedPost = post.copyWith(lastOpenedAt: DateTime.now());
+      context.read<PostBloc>().add(UpdatePost(updatedPost));
+      return null;
+    }, []);
+
     // Form controllers initialized with existing values
     final titleController = useTextEditingController(text: post.title);
     final linkController = useTextEditingController(text: post.link);
@@ -65,185 +84,300 @@ class PostDetailsScreen extends HookWidget {
         ? folderRepository.getFolderById(post.folderId!)
         : null;
 
-    // Platform options
-    final platforms = Platform.values;
-
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: AppTheme.primaryColor,
-        title: const Text(
+        backgroundColor: AppTheme.cardColor,
+        centerTitle: true,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        title: Text(
           'Post Details',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w500,
-            letterSpacing: 0.5,
-          ),
+          style: Theme.of(context).textTheme.titleLarge,
         ),
         actions: [
-          // Folder button
-          IconButton(
-            icon: const Icon(Icons.folder),
-            onPressed: () => _showFolderSelector(context, post),
-            tooltip: 'Add to folder',
-          ),
-          // Toggle edit mode
-          IconButton(
-            icon: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              transitionBuilder: (Widget child, Animation<double> animation) {
-                return ScaleTransition(
-                  scale: animation,
-                  child: child,
-                );
-              },
-              child: Container(
-                key: ValueKey<bool>(isEditing.value),
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: isEditing.value
-                      ? Colors.white.withValues(alpha: 0.2)
-                      : Colors.transparent,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isEditing.value ? Icons.check_rounded : Icons.edit_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.black),
+            color: AppTheme.cardColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppTheme.radiusMd),
             ),
-            onPressed: () {
-              if (isEditing.value) {
-                // Save changes
-                if (formKey.currentState!.validate()) {
-                  _updatePost(
-                    context,
-                    post.copyWith(
-                      title: titleController.text.trim(),
-                      link: linkController.text.trim(),
-                      type: selectedType.value,
-                      priority: selectedPriority.value,
-                      platform: selectedPlatform.value,
-                    ),
-                  );
+            onSelected: (value) {
+              switch (value) {
+                case 'folder':
+                  _showFolderSelector(context, post);
+                  break;
+                case 'reminder':
+                  _showReminderDialog(context);
+                  break;
+                case 'edit':
+                  if (isEditing.value) {
+                    // Save changes
+                    if (formKey.currentState!.validate()) {
+                      // Use the latest post from Bloc state to avoid overwriting tags/highlights
+                      final postState = context.read<PostBloc>().state;
+                      final latestPost = postState is PostLoaded
+                          ? (postState.posts.firstWhere(
+                              (p) => p.id == post.id,
+                              orElse: () => post,
+                            ))
+                          : post;
 
-                  isEditing.value = false;
-                }
-              } else {
-                // Enter edit mode
-                isEditing.value = true;
+                      _updatePost(
+                        context,
+                        latestPost.copyWith(
+                          title: titleController.text.trim(),
+                          link: linkController.text.trim(),
+                          type: selectedType.value,
+                          priority: selectedPriority.value,
+                          platform: selectedPlatform.value,
+                        ),
+                      );
+                      isEditing.value = false;
+                    }
+                  } else {
+                    // Enter edit mode
+                    // Sync controllers and selections with the latest post state
+                    final postState = context.read<PostBloc>().state;
+                    final latestPost = postState is PostLoaded
+                        ? (postState.posts.firstWhere(
+                            (p) => p.id == post.id,
+                            orElse: () => post,
+                          ))
+                        : post;
+
+                    titleController.text = latestPost.title;
+                    linkController.text = latestPost.link;
+                    selectedType.value = latestPost.type;
+                    selectedPriority.value = latestPost.priority;
+                    selectedPlatform.value = latestPost.platform;
+
+                    isEditing.value = true;
+                  }
+                  break;
+                case 'delete':
+                  _showDeleteConfirmation(context);
+                  break;
               }
             },
-          ),
-          // Delete post
-          IconButton(
-            icon: const Icon(Icons.delete),
-            onPressed: () => _showDeleteConfirmation(context),
+            itemBuilder: (BuildContext context) => [
+              const PopupMenuItem<String>(
+                value: 'folder',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.folder,
+                      color: AppTheme.foregroundColor,
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Add to folder',
+                      style: TextStyle(
+                        color: AppTheme.foregroundColor,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'reminder',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.alarm_add,
+                      color: AppTheme.foregroundColor,
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Set reminder',
+                      style: TextStyle(
+                        color: AppTheme.foregroundColor,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'edit',
+                child: Row(
+                  children: [
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Icon(
+                        isEditing.value
+                            ? Icons.check_rounded
+                            : Icons.edit_rounded,
+                        key: ValueKey<bool>(isEditing.value),
+                        color: isEditing.value
+                            ? AppTheme.primaryColor
+                            : AppTheme.foregroundColor,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      isEditing.value ? 'Save changes' : 'Edit post',
+                      style: TextStyle(
+                        color: isEditing.value
+                            ? AppTheme.primaryColor
+                            : AppTheme.foregroundColor,
+                        fontSize: 14,
+                        fontWeight: isEditing.value
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.delete,
+                      color: AppTheme.errorColor,
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Delete post',
+                      style: TextStyle(
+                        color: AppTheme.errorColor,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
       body: Form(
         key: formKey,
         child: ListView(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.all(AppTheme.spacing4),
           children: [
             // Type and Priority chips
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildTypeChip(context, selectedType.value),
-                const SizedBox(width: 12),
-                _buildPriorityChip(context, selectedPriority.value),
-              ],
+            SectionCard(
+              title: 'Classification',
+              icon: Icons.label_outline,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TypeChip(type: selectedType.value),
+                  const SizedBox(width: AppTheme.spacing3),
+                  PriorityChip(priority: selectedPriority.value),
+                ],
+              ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.spacing4),
 
             // Current folder indicator (if in a folder)
             if (currentFolder != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-                decoration: BoxDecoration(
-                  color: Color(int.parse(currentFolder.color.substring(1),
-                              radix: 16) +
-                          0xFF000000)
-                      .withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
+              SectionCard(
+                title: 'Folder',
+                icon: Icons.folder_outlined,
+                child: Container(
+                  padding: const EdgeInsets.all(AppTheme.spacing3),
+                  decoration: BoxDecoration(
                     color: Color(int.parse(currentFolder.color.substring(1),
                                 radix: 16) +
                             0xFF000000)
-                        .withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.folder,
-                      size: 16,
+                        .withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                    border: Border.all(
                       color: Color(int.parse(currentFolder.color.substring(1),
-                              radix: 16) +
-                          0xFF000000),
+                                  radix: 16) +
+                              0xFF000000)
+                          .withValues(alpha: 0.3),
                     ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'In folder: ${currentFolder.name}',
-                      style: TextStyle(
-                        color: Color(int.parse(currentFolder.color.substring(1),
-                                radix: 16) +
-                            0xFF000000),
-                        fontWeight: FontWeight.w500,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const Spacer(),
-                    InkWell(
-                      onTap: () => _removeFromFolder(context, post),
-                      child: Icon(
-                        Icons.close,
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.folder,
                         size: 16,
                         color: Color(int.parse(currentFolder.color.substring(1),
                                 radix: 16) +
                             0xFF000000),
                       ),
+                      const SizedBox(width: AppTheme.spacing2),
+                      Expanded(
+                        child: Text(
+                          currentFolder.name,
+                          style: TextStyle(
+                            color: Color(int.parse(
+                                    currentFolder.color.substring(1),
+                                    radix: 16) +
+                                0xFF000000),
+                            fontWeight: FontWeight.w500,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => _removeFromFolder(context, post),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusSm),
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppTheme.spacing1),
+                          child: Icon(
+                            Icons.close,
+                            size: 16,
+                            color: Color(int.parse(
+                                    currentFolder.color.substring(1),
+                                    radix: 16) +
+                                0xFF000000),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+            if (currentFolder != null)
+              const SizedBox(height: AppTheme.spacing4),
+
+            // Created date
+            SectionCard(
+              title: 'Created',
+              icon: Icons.schedule,
+              child: Container(
+                padding: const EdgeInsets.all(AppTheme.spacing3),
+                decoration: BoxDecoration(
+                  color: AppTheme.mutedColor,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMd),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today,
+                        size: 16, color: AppTheme.mutedForeground),
+                    const SizedBox(width: AppTheme.spacing2),
+                    Text(
+                      DateFormat('MMMM d, yyyy').format(post.createdAt),
+                      style: const TextStyle(
+                        color: AppTheme.mutedForeground,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
               ),
-
-            // Created date
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.calendar_today,
-                      size: 16, color: AppTheme.lightTextColor),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Added on ${DateFormat('MMMM d, yyyy').format(post.createdAt)}',
-                    style: const TextStyle(
-                      color: AppTheme.lightTextColor,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: AppTheme.spacing4),
 
             // Title field
-            _buildAnimatedFormField(
+            AnimatedFormField(
               label: 'Title / Note',
               icon: Icons.title,
               controller: titleController,
@@ -257,10 +391,10 @@ class PostDetailsScreen extends HookWidget {
               },
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.spacing4),
 
             // Link field
-            _buildAnimatedFormField(
+            AnimatedFormField(
               label: 'LinkedIn Post URL',
               icon: Icons.link,
               controller: linkController,
@@ -270,336 +404,127 @@ class PostDetailsScreen extends HookWidget {
                 if (value == null || value.isEmpty) {
                   return 'Please enter the LinkedIn post URL';
                 }
-
                 return null;
               },
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.spacing4),
 
-            // Post Type dropdown
-            _buildAnimatedDropdown(
-              label: 'Post Type',
-              icon: Icons.category,
-              value: selectedType.value,
-              items: PostType.values,
-              onChanged: isEditing.value
-                  ? (value) {
-                      if (value != null) {
-                        selectedType.value = value;
-                      }
-                    }
-                  : null,
-              isEditing: isEditing.value,
+            // Post Type and Priority dropdowns
+            SectionCard(
+              title: 'Settings',
+              icon: Icons.settings_outlined,
+              child: Column(
+                children: [
+                  // Post Type dropdown
+                  DropdownField(
+                    label: 'Post Type',
+                    icon: Icons.category,
+                    value: selectedType.value.toString().split('.').last,
+                    items: PostType.values
+                        .map((e) => e.toString().split('.').last)
+                        .toList(),
+                    onChanged: isEditing.value
+                        ? (value) {
+                            if (value != null) {
+                              selectedType.value = PostType.values.firstWhere(
+                                  (e) => e.toString().split('.').last == value);
+                            }
+                          }
+                        : null,
+                    isEditing: isEditing.value,
+                  ),
+                  const SizedBox(height: AppTheme.spacing4),
+                  // Priority dropdown
+                  DropdownField(
+                    label: 'Priority',
+                    icon: Icons.flag,
+                    value: selectedPriority.value.toString().split('.').last,
+                    items: Priority.values
+                        .map((e) => e.toString().split('.').last)
+                        .toList(),
+                    onChanged: isEditing.value
+                        ? (value) {
+                            if (value != null) {
+                              selectedPriority.value = Priority.values
+                                  .firstWhere((e) =>
+                                      e.toString().split('.').last == value);
+                            }
+                          }
+                        : null,
+                    isEditing: isEditing.value,
+                  ),
+                  const SizedBox(height: AppTheme.spacing4),
+                  // Platform dropdown
+                  DropdownField(
+                    label: 'Platform',
+                    icon: Icons.language,
+                    value: selectedPlatform.value.toString().split('.').last,
+                    items: Platform.values
+                        .map((e) => e.toString().split('.').last)
+                        .toList(),
+                    onChanged: isEditing.value
+                        ? (value) {
+                            if (value != null) {
+                              selectedPlatform.value = Platform.values
+                                  .firstWhere((e) =>
+                                      e.toString().split('.').last == value);
+                            }
+                          }
+                        : null,
+                    isEditing: isEditing.value,
+                  ),
+                ],
+              ),
             ),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.spacing4),
 
-            // Priority dropdown
-            _buildAnimatedDropdown(
-              label: 'Priority',
-              icon: Icons.flag,
-              value: selectedPriority.value,
-              items: Priority.values,
-              onChanged: isEditing.value
-                  ? (value) {
-                      if (value != null) {
-                        selectedPriority.value = value;
-                      }
-                    }
-                  : null,
-              isEditing: isEditing.value,
-            ),
+            // Tags section
+            TagsSection(isEditing: isEditing, post: post),
 
-            const SizedBox(height: 16),
+            const SizedBox(height: AppTheme.spacing4),
 
-            // Platform dropdown
-            _buildAnimatedDropdown(
-              label: 'Platform',
-              icon: Icons.language,
-              value: selectedPlatform.value,
-              items: platforms,
-              onChanged: isEditing.value
-                  ? (value) {
-                      if (value != null) {
-                        selectedPlatform.value = value;
-                      }
-                    }
-                  : null,
-              isEditing: isEditing.value,
-            ),
+            // Highlights section
+            HighlightsSection(isEditing: isEditing, post: post),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: AppTheme.spacing4),
+
+            // Reminders section
+            RemindersSection(post: post),
+
+            const SizedBox(height: AppTheme.spacing4),
+
+            const SizedBox(height: AppTheme.spacing6),
 
             // Action buttons
-            Card(
-              margin: const EdgeInsets.only(top: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-                side: BorderSide(
-                  color: AppTheme.getPostTypeColor(selectedType.value)
-                      .withValues(alpha: 0.3),
-                  width: 1,
-                ),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Open in App button
-                    _buildOpenButton(
-                      label: 'OPEN IN APP',
-                      icon: Icons.open_in_new,
-                      isPrimary: true,
-                      onPressed: () =>
-                          _openInApp(context, post.link, post.title),
-                    ),
-                    const SizedBox(height: 12),
-                    // Open in Browser button
-                    _buildOpenButton(
-                      label: 'OPEN IN BROWSER',
-                      icon: Icons.language,
-                      isPrimary: false,
-                      onPressed: () => _openInBrowser(post.link),
-                    ),
-                  ],
-                ),
+            SectionCard(
+              title: 'Actions',
+              icon: Icons.launch,
+              child: Column(
+                children: [
+                  // Open in App button
+                  OpenButton(
+                    label: 'OPEN IN APP',
+                    icon: Icons.open_in_new,
+                    isPrimary: true,
+                    onPressed: () => _openInApp(context, post.link, post.title),
+                  ),
+                  const SizedBox(height: AppTheme.spacing3),
+                  // Open in Browser button
+                  OpenButton(
+                    label: 'OPEN IN BROWSER',
+                    icon: Icons.language,
+                    isPrimary: false,
+                    onPressed: () => _openInBrowser(post.link),
+                  ),
+                ],
               ),
             ),
+
+            const SizedBox(height: AppTheme.spacing6),
           ],
         ),
-      ),
-    );
-  }
-
-  // Custom button for Open in App/Browser
-  Widget _buildOpenButton({
-    required String label,
-    required IconData icon,
-    required bool isPrimary,
-    required VoidCallback onPressed,
-  }) {
-    return Material(
-      color: isPrimary ? AppTheme.primaryColor : Colors.white,
-      borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16.0),
-          decoration: BoxDecoration(
-            border: isPrimary
-                ? null
-                : Border.all(color: AppTheme.primaryColor, width: 1),
-            borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: isPrimary ? Colors.white : AppTheme.primaryColor,
-                size: 18,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  color: isPrimary ? Colors.white : AppTheme.primaryColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Type chip
-  Widget _buildTypeChip(BuildContext context, String type) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.getPostTypeColor(type).withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppTheme.getPostTypeColor(type).withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.category,
-            size: 16,
-            color: AppTheme.getPostTypeColor(type),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            type,
-            style: TextStyle(
-              color: AppTheme.getPostTypeColor(type),
-              fontWeight: FontWeight.w500,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Priority chip
-  Widget _buildPriorityChip(BuildContext context, String priority) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.getPriorityColor(priority).withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: AppTheme.getPriorityColor(priority).withValues(alpha: 0.3),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.flag,
-            size: 16,
-            color: AppTheme.getPriorityColor(priority),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            priority,
-            style: TextStyle(
-              color: AppTheme.getPriorityColor(priority),
-              fontWeight: FontWeight.w500,
-              fontSize: 14,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Animated form field
-  Widget _buildAnimatedFormField({
-    required String label,
-    required IconData icon,
-    required TextEditingController controller,
-    required bool readOnly,
-    required bool isEditing,
-    required FormFieldValidator<String> validator,
-  }) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-        boxShadow: isEditing
-            ? [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: TextFormField(
-        controller: controller,
-        readOnly: readOnly,
-        validator: validator,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon),
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-            borderSide: BorderSide(
-              color: isEditing ? AppTheme.primaryColor : Colors.grey[300]!,
-            ),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-            borderSide: BorderSide(
-              color: isEditing ? AppTheme.primaryColor : Colors.grey[300]!,
-              width: isEditing ? 2 : 1,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-            borderSide: const BorderSide(
-              color: AppTheme.primaryColor,
-              width: 2,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Animated dropdown
-  Widget _buildAnimatedDropdown({
-    required String label,
-    required IconData icon,
-    required String value,
-    required List<String> items,
-    required ValueChanged<String?>? onChanged,
-    required bool isEditing,
-  }) {
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-        boxShadow: isEditing
-            ? [
-                BoxShadow(
-                  color: AppTheme.primaryColor.withValues(alpha: 0.1),
-                  blurRadius: 4,
-                  offset: const Offset(0, 2),
-                ),
-              ]
-            : null,
-      ),
-      child: DropdownButtonFormField<String>(
-        value: value,
-        onChanged: onChanged,
-        decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon),
-          filled: true,
-          fillColor: Colors.white,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-            borderSide: BorderSide(
-              color: isEditing ? AppTheme.primaryColor : Colors.grey[300]!,
-            ),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-            borderSide: BorderSide(
-              color: isEditing ? AppTheme.primaryColor : Colors.grey[300]!,
-              width: isEditing ? 2 : 1,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppTheme.borderRadius),
-            borderSide: const BorderSide(
-              color: AppTheme.primaryColor,
-              width: 2,
-            ),
-          ),
-        ),
-        items: items.map((item) {
-          return DropdownMenuItem(
-            value: item,
-            child: Text(item),
-          );
-        }).toList(),
       ),
     );
   }
@@ -664,12 +589,22 @@ class PostDetailsScreen extends HookWidget {
     );
   }
 
+  // Helper method to ensure URL has proper scheme
+  String _ensureUrlScheme(String url) {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // Default to https for URLs without scheme
+    return 'https://$url';
+  }
+
   Future<void> _openInBrowser(String url) async {
-    final Uri uri = Uri.parse(url);
+    final String properUrl = _ensureUrlScheme(url);
+    final Uri uri = Uri.parse(properUrl);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
-      debugPrint('Could not launch $url');
+      debugPrint('Could not launch $properUrl');
     }
   }
 
@@ -723,7 +658,7 @@ class PostDetailsScreen extends HookWidget {
                                   width: 40,
                                   height: 40,
                                   decoration: BoxDecoration(
-                                    color: folderColor.withOpacity(0.2),
+                                    color: folderColor.withValues(alpha: 0.2),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
                                         color: folderColor, width: 1),
@@ -817,5 +752,30 @@ class PostDetailsScreen extends HookWidget {
         ),
       );
     }
+  }
+
+  void _showReminderDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => ReminderDialog(
+        postId: post.id,
+        postTitle: post.title,
+        onSave: (dueAt, repeat) {
+          final reminder = Reminder(
+            id: '',
+            postId: post.id,
+            dueAt: dueAt,
+            repeat: repeat,
+          );
+          context.read<ReminderBloc>().add(AddReminder(reminder));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Reminder set successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        },
+      ),
+    );
   }
 }
